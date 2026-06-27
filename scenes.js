@@ -69,12 +69,30 @@ const OVERLAYS = {
     { type: 'Feature', properties: { layer: 'units', side: 'red', kind: 'airborne', name: 'VDV 45th Guards', scenes: [2,3,4,7] }, geometry: { type: 'Point', coordinates: [30.180,50.610] } },
     { type: 'Feature', properties: { layer: 'units', side: 'blue', kind: 'rapid', name: '4th Rapid Response Bn', scenes: [3] }, geometry: { type: 'Point', coordinates: [30.240,50.572] } }
   ] },
-  /* Combat ember markers (page 8) — shown only on relevant scenes */
+  /* Combat ember markers — Antonov removed (artillery FX covers it); Ivankiv + Vasylkiv remain */
   fire: { type: 'FeatureCollection', features: [
-    { type: 'Feature', properties: { layer: 'fire', scenes: [2,3,4,7] }, geometry: { type: 'Point', coordinates: [30.192,50.603] } },
     { type: 'Feature', properties: { layer: 'fire', scenes: [6] }, geometry: { type: 'Point', coordinates: [29.894,50.939] } },
     { type: 'Feature', properties: { layer: 'fire', scenes: [8] }, geometry: { type: 'Point', coordinates: [30.327,50.241] } }
   ] }
+};
+
+/* FX — animated markers: helicopter, paratroopers, artillery. Gated per scene (0-indexed). */
+const FX = {
+  helicopter: {
+    route: OVERLAYS['heli-route'].features[0].geometry.coordinates,
+    at: [30.205, 50.604],
+    flyScene: 1,
+    scenes: [1, 2],
+    flyMs: 9000
+  },
+  paratroopers: {
+    at: [30.192, 50.603],
+    scenes: [2, 3, 7]
+  },
+  artillery: {
+    positions: [[30.205, 50.600], [30.218, 50.608]],
+    scenes: [3, 4, 7]
+  }
 };
 
 /* SOURCES — bibliography + evidence-tag key (rendered in the Sources panel). */

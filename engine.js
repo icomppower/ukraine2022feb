@@ -14,7 +14,11 @@ const FADE = {};
 const sceneMarkers = [];
 const FLY_DURATION = 3600;
 
-/* Inline SVG glyphs for force-unit badges (page 8) */
+/* FX state */
+let heliMarker = null, heliEl = null, heliRaf = null, heliStart = null;
+const paraEls = [], artyEls = [];
+
+/* Inline SVG glyphs for force-unit badges */
 const UNIT_ICONS = {
   airborne: `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
     <path d="M10 4 A6 6 0 0 0 4 10 L16 10 A6 6 0 0 0 10 4Z" fill="currentColor" opacity="0.7" stroke="none"/>
@@ -28,6 +32,24 @@ const UNIT_ICONS = {
   </svg>`
 };
 
+/* Helicopter silhouette SVG (rotor spins via CSS) */
+const HELI_SVG = `<svg class="heli-svg" viewBox="0 0 44 22" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <rect class="heli-rotor" x="2" y="4" width="40" height="2.5" rx="1.25"/>
+  <ellipse cx="19" cy="13" rx="11" ry="5"/>
+  <ellipse cx="12" cy="12" rx="6" ry="4.5" fill="rgba(180,220,255,0.35)" stroke="none"/>
+  <rect x="28" y="12" width="13" height="2" rx="1"/>
+  <rect class="heli-tail-rotor" x="39" y="8" width="2" height="9" rx="1"/>
+</svg>`;
+
+/* Paratrooper canopy SVG (drifts down via CSS) */
+const PARA_SVG = `<svg class="para-svg" viewBox="0 0 22 30" fill="white" xmlns="http://www.w3.org/2000/svg">
+  <path d="M11 2 A9 7 0 0 0 2 11 L20 11 A9 7 0 0 0 11 2Z"/>
+  <line x1="4" y1="11" x2="11" y2="22" stroke="white" stroke-width="0.8"/>
+  <line x1="11" y1="11" x2="11" y2="22" stroke="white" stroke-width="0.8"/>
+  <line x1="18" y1="11" x2="11" y2="22" stroke="white" stroke-width="0.8"/>
+  <circle cx="11" cy="25" r="2.5"/>
+</svg>`;
+
 const map = new maplibregl.Map({
   container: 'map',
   style: {
@@ -35,7 +57,7 @@ const map = new maplibregl.Map({
     glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
     sources: {
       sat: { type: 'raster',
-        /* Fallback: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg' */
+        /* Fallback EOX: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg' */
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256, maxzoom: 18,
         attribution: 'Tiles © Esri — Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community' },
@@ -53,6 +75,114 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right');
 
+/* ── Route helpers ── */
+function buildRoute(coords) {
+  const d = [0];
+  for (let i = 1; i < coords.length; i++) {
+    const dx = coords[i][0] - coords[i-1][0], dy = coords[i][1] - coords[i-1][1];
+    d.push(d[i-1] + Math.sqrt(dx*dx + dy*dy));
+  }
+  return d;
+}
+
+function alongRoute(coords, d, frac) {
+  const target = frac * d[d.length-1];
+  for (let i = 1; i < d.length; i++) {
+    if (d[i] >= target || i === d.length-1) {
+      const span = d[i] - d[i-1];
+      const t = span > 0 ? (target - d[i-1]) / span : 0;
+      const lng = coords[i-1][0] + t * (coords[i][0] - coords[i-1][0]);
+      const lat = coords[i-1][1] + t * (coords[i][1] - coords[i-1][1]);
+      const bearing = Math.atan2(coords[i][0] - coords[i-1][0], coords[i][1] - coords[i-1][1]) * 180 / Math.PI;
+      return { lngLat: [lng, lat], bearing };
+    }
+  }
+  return { lngLat: coords[coords.length-1], bearing: 0 };
+}
+
+/* ── Helicopter RAF animation ── */
+function startHeli() {
+  stopHeli();
+  heliStart = null;
+  const coords = FX.helicopter.route;
+  const d = buildRoute(coords);
+  const flyMs = FX.helicopter.flyMs || 9000;
+  function step(ts) {
+    if (!heliStart) heliStart = ts;
+    const frac = Math.min((ts - heliStart) / flyMs, 1);
+    const { lngLat, bearing } = alongRoute(coords, d, frac);
+    heliMarker.setLngLat(lngLat);
+    heliMarker.setRotation(bearing);
+    if (frac < 1) heliRaf = requestAnimationFrame(step);
+    else parkHeli();
+  }
+  heliRaf = requestAnimationFrame(step);
+}
+
+function stopHeli() {
+  if (heliRaf) { cancelAnimationFrame(heliRaf); heliRaf = null; }
+}
+
+function parkHeli() {
+  stopHeli();
+  if (heliMarker) { heliMarker.setLngLat(FX.helicopter.at); heliMarker.setRotation(0); }
+}
+
+/* ── Build FX DOM markers (called once from addOverlays) ── */
+function addFx() {
+  // Helicopter
+  heliEl = document.createElement('div');
+  heliEl.className = 'heli-marker';
+  heliEl.innerHTML = HELI_SVG;
+  heliEl.style.opacity = '0';
+  heliMarker = new maplibregl.Marker({ element: heliEl, anchor: 'center', rotationAlignment: 'map' })
+    .setLngLat(FX.helicopter.route[0]).addTo(map);
+
+  // Paratroopers — 3 staggered positions around the airfield
+  const offsets = [[-0.004, 0.005], [0.001, 0.006], [0.005, 0.004]];
+  for (let i = 0; i < 3; i++) {
+    const el = document.createElement('div');
+    el.className = 'para-marker';
+    el.innerHTML = PARA_SVG;
+    el.style.opacity = '0';
+    el.style.animationDelay = (i * 0.5) + 's';
+    paraEls.push(el);
+    new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([FX.paratroopers.at[0] + offsets[i][0], FX.paratroopers.at[1] + offsets[i][1]])
+      .addTo(map);
+  }
+
+  // Artillery — two offset positions, staggered firing rhythm
+  FX.artillery.positions.forEach((pos, i) => {
+    const el = document.createElement('div');
+    el.className = 'arty-marker';
+    el.style.animationDelay = (i * 0.55) + 's';
+    el.style.opacity = '0';
+    artyEls.push(el);
+    new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(pos).addTo(map);
+  });
+}
+
+function updateFx() {
+  if (!heliEl) return;
+
+  // Helicopter: fly on flyScene, park on other heli scenes, hide otherwise
+  const hVisible = FX.helicopter.scenes.includes(current);
+  heliEl.style.opacity = hVisible ? '1' : '0';
+  if (hVisible && current === FX.helicopter.flyScene) startHeli();
+  else if (hVisible) parkHeli();
+  else stopHeli();
+
+  // Paratroopers
+  const pVisible = FX.paratroopers.scenes.includes(current);
+  paraEls.forEach(el => { el.style.opacity = pVisible ? '1' : '0'; });
+
+  // Artillery
+  const aVisible = FX.artillery.scenes.includes(current);
+  artyEls.forEach(el => { el.style.opacity = aVisible ? '1' : '0'; });
+}
+
+/* ── Overlay layers ── */
 function addOverlays() {
   for (const key in OVERLAYS) {
     if (key === 'units' || key === 'fire') continue;
@@ -88,6 +218,7 @@ function addOverlays() {
     FADE[id] = [['fill-opacity', 0.18]];
   }
   addPointMarkers();
+  addFx();
 }
 
 function addPointMarkers() {
@@ -115,7 +246,6 @@ function addPointMarkers() {
     if (props.scenes) sceneMarkers.push({ el: wrap, scenes: props.scenes });
   }
 
-  /* Fire / ember markers */
   if (OVERLAYS.fire) {
     for (const f of OVERLAYS.fire.features) {
       const el = document.createElement('div'); el.className = 'fire-marker';
@@ -143,6 +273,7 @@ function applyLayers() {
   }
 }
 
+/* ── HUD ── */
 const els = {
   caption: document.getElementById('caption'), date: document.getElementById('date'),
   tag: document.getElementById('tag'), playBtn: document.getElementById('playBtn'),
@@ -167,6 +298,7 @@ function renderDots() {
   });
 }
 
+/* ── Camera: drift + flyTo ── */
 function stopDrift() {
   clearTimeout(driftTimeout); driftTimeout = null;
   if (drifting) { map.stop(); drifting = false; }
@@ -187,7 +319,7 @@ function playScene(i, instant) {
   const s = SCENES[current];
   stopDrift();
   map.flyTo({ ...s.camera, duration: instant ? 0 : FLY_DURATION, essential: true, curve: 1.6 });
-  applyLayers(); updateMarkers(); renderCaption(); renderDots();
+  applyLayers(); updateMarkers(); updateFx(); renderCaption(); renderDots();
   if (!instant) startDrift(s);
   clearTimeout(timer);
   if (playing && current < SCENES.length - 1) timer = setTimeout(() => playScene(current + 1), s.duration);
@@ -200,12 +332,24 @@ function updatePlayBtn() {
   els.playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
 }
 
+/* ── Sources ── */
 function renderSources() {
   const ul = document.getElementById('sourceList'); ul.innerHTML = '';
   (SOURCES[lang] || []).forEach(t => { const li = document.createElement('li'); li.textContent = t; ul.appendChild(li); });
 }
 
+/* ── Audio + mute ── */
 const music = document.getElementById('music');
+const muteBtn = document.getElementById('muteBtn');
+if (muteBtn && music) {
+  muteBtn.onclick = () => {
+    music.muted = !music.muted;
+    muteBtn.textContent = music.muted ? '♪' : '♫';
+    muteBtn.title = music.muted ? 'Unmute music' : 'Mute music';
+    muteBtn.style.opacity = music.muted ? '0.45' : '1';
+  };
+}
+
 function startTour() {
   if (started) return; started = true;
   document.getElementById('intro').classList.add('hidden');
@@ -213,6 +357,7 @@ function startTour() {
   if (music) { music.volume = 0.5; music.play().catch(() => {}); }
 }
 
+/* ── Map lifecycle ── */
 let overlaysReady = false;
 function ensureOverlays() {
   if (overlaysReady) return;
@@ -233,6 +378,7 @@ map.on('load', () => {
 });
 map.on('dragstart', () => { playing = false; clearTimeout(timer); stopDrift(); updatePlayBtn(); });
 
+/* ── Controls ── */
 els.playBtn.onclick = () => {
   if (!started) { startTour(); return; }
   playing = !playing;
