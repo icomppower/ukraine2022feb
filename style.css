@@ -188,6 +188,20 @@ button { font-family: inherit; cursor: pointer; }
   to   { transform: rotate(360deg); }
 }
 
+/* Shootdown / crash */
+.heli-hit { animation: heli-down 1.5s ease-in forwards !important; }
+@keyframes heli-down {
+  0%   { transform: translateY(0)    rotate(0deg);   opacity: 1;   }
+  35%  { transform: translateY(10px) rotate(60deg);  opacity: 0.9; }
+  100% { transform: translateY(40px) rotate(220deg); opacity: 0;   }
+}
+.wreck-marker {
+  width: 14px; height: 14px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(90,80,70,0.9) 0%, rgba(40,30,20,0.55) 55%, transparent 100%);
+  box-shadow: 0 0 7px 3px rgba(80,60,40,0.45);
+  animation: ember-flicker 1.4s ease-in-out infinite alternate;
+}
+
 /* Paratroopers */
 .para-marker { pointer-events: none; }
 .para-svg {

@@ -15,12 +15,15 @@ const sceneMarkers = [];
 const FLY_DURATION = 3600;
 
 /* FX state */
-const heliMarkers = [];    /* [{ marker, el, heli }] per formation member */
-const heliTimers  = [];    /* setInterval handle per formation member */
-let   arrivedCount = 0;
+const heliMarkers  = [];   /* [{ marker, el, heli }] per formation member */
+const heliTimers   = [];   /* setInterval handle per formation member */
+const egressTimers = [];   /* egress setInterval handle per survivor */
+const wreckMarkers = [];   /* crash-site DOM markers */
+let   arrivedCount = 0, survivorCount = 0;
 let rapidMarker = null, rapidEl = null, rapidTimer = null, rapidStarted = false;
 let vdvEl = null, vdvArrived = false;
-const paraEls = [], artyEls = [];
+let egressStarted = false;
+const paraEls = [], groundEls = [], artyEls = [], kalibrEls = [];
 
 /* Inline SVG glyphs for force-unit badges */
 const UNIT_ICONS = {
@@ -33,6 +36,19 @@ const UNIT_ICONS = {
   rapid: `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <polyline points="5,5 10,10 5,15"/>
     <polyline points="10,5 15,10 10,15"/>
+  </svg>`,
+  ground: `<svg viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="10" cy="5.5" r="2.5"/>
+    <path d="M6.5 20 Q6.5 12 10 12 Q13.5 12 13.5 20Z"/>
+    <rect x="4" y="10" width="3" height="1.5" rx="0.75"/>
+    <rect x="13" y="10" width="3" height="1.5" rx="0.75"/>
+  </svg>`,
+  armor: `<svg viewBox="0 0 20 20" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <rect x="2" y="10" width="16" height="5" rx="1"/>
+    <rect x="5" y="7" width="10" height="5" rx="1"/>
+    <rect x="10" y="4" width="5" height="4" rx="0.75"/>
+    <rect x="1" y="13" width="2" height="2" rx="0.5"/>
+    <rect x="17" y="13" width="2" height="2" rx="0.5"/>
   </svg>`
 };
 
@@ -118,33 +134,67 @@ function alongRoute(coords, d, frac) {
   return { lngLat: coords[coords.length-1], bearing: 0 };
 }
 
-/* ── Formation helicopter animation ── */
-function startHeli() {
+/* ── Phased helicopter animation ──
+ * startHeli(f0, f1, opts): animate each surviving heli from route frac f0 → f1.
+ * opts.shootdowns: trigger crash sequences for fate:'downed' helis.
+ * opts.onComplete:  callback when all SURVIVORS reach f1. */
+function startHeli(f0, f1, opts) {
   stopHeli();
+  opts = opts || {};
   arrivedCount = 0;
-  const coords = FX.heliRoute;
-  const d = buildRoute(coords);
+  survivorCount = heliMarkers.filter(({ heli }) => !heli._downed).length;
+  const coords = FX.heliRoute, d = buildRoute(coords);
+  const span = f1 - f0;
+
   heliMarkers.forEach(({ marker, el, heli }, i) => {
+    if (heli._downed) return;
     el.style.opacity = '1';
     const departAt = Date.now() + heli.lagMs;
+
     heliTimers[i] = setInterval(() => {
       const now = Date.now();
       if (now < departAt) {
-        /* still in lag — hold at route start with lateral offset */
-        marker.setLngLat([coords[0][0] + heli.offset[0], coords[0][1] + heli.offset[1]]);
+        const { lngLat, bearing } = alongRoute(coords, d, f0);
+        marker.setLngLat([lngLat[0] + heli.offset[0], lngLat[1] + heli.offset[1]]);
+        marker.setRotation(bearing + 90);
         return;
       }
-      const frac = Math.min((now - departAt) / FX.flyMs, 1);
-      const { lngLat, bearing } = alongRoute(coords, d, frac);
-      marker.setLngLat([lngLat[0] + heli.offset[0], lngLat[1] + heli.offset[1]]);
-      /* Nose is LEFT (west) in SVG; +90° rotates it to face the compass bearing */
-      marker.setRotation(bearing + 90);
-      if (frac >= 1) {
+      const localFrac = Math.min((now - departAt) / (FX.flyMs * span), 1);
+      const globalFrac = f0 + localFrac * span;
+
+      /* Shootdown check */
+      if (opts.shootdowns && heli.fate === 'downed' && globalFrac >= heli.downAtFrac) {
+        heli._downed = true;
         clearInterval(heliTimers[i]); heliTimers[i] = null;
-        marker.setLngLat([FX.heliAt[0] + heli.offset[0], FX.heliAt[1] + heli.offset[1]]);
-        marker.setRotation(0);
+        const { lngLat: crash } = alongRoute(coords, d, heli.downAtFrac);
+        el.classList.add('heli-hit');
+        setTimeout(() => {
+          el.style.opacity = '0';
+          el.classList.remove('heli-hit');
+          const wEl = document.createElement('div'); wEl.className = 'wreck-marker';
+          const wMk = new maplibregl.Marker({ element: wEl, anchor: 'center' })
+            .setLngLat([crash[0] + heli.offset[0], crash[1] + heli.offset[1]]).addTo(map);
+          wreckMarkers.push({ el: wEl, marker: wMk });
+        }, 1500);
+        /* recompute survivor count and check if others already done */
+        survivorCount = heliMarkers.filter(({ heli: h }) => !h._downed).length;
+        if (arrivedCount >= survivorCount && opts.onComplete) opts.onComplete();
+        return;
+      }
+
+      const { lngLat, bearing } = alongRoute(coords, d, globalFrac);
+      marker.setLngLat([lngLat[0] + heli.offset[0], lngLat[1] + heli.offset[1]]);
+      marker.setRotation(bearing + 90);
+
+      if (localFrac >= 1) {
+        clearInterval(heliTimers[i]); heliTimers[i] = null;
+        if (f1 >= 1.0) {
+          /* Final landing */
+          marker.setLngLat([FX.heliAt[0] + heli.offset[0], FX.heliAt[1] + heli.offset[1]]);
+          marker.setRotation(0);
+        }
         arrivedCount++;
-        if (arrivedCount >= FX.helicopters.length) onAllArrived();
+        if (arrivedCount >= survivorCount && opts.onComplete) opts.onComplete();
       }
     }, 50);
   });
@@ -154,30 +204,61 @@ function stopHeli() {
   heliTimers.forEach((t, i) => { if (t) { clearInterval(t); heliTimers[i] = null; } });
 }
 
-function parkHeli() {
-  stopHeli();
-  heliMarkers.forEach(({ marker, heli }) => {
-    marker.setLngLat([FX.heliAt[0] + heli.offset[0], FX.heliAt[1] + heli.offset[1]]);
-    marker.setRotation(0);
+function resetHeliState() {
+  stopHeli(); stopEgress();
+  heliMarkers.forEach(({ el, heli }) => { heli._downed = false; el.style.opacity = '0'; el.classList.remove('heli-hit'); });
+  wreckMarkers.forEach(({ el, marker }) => { marker.remove(); });
+  wreckMarkers.length = 0;
+  arrivedCount = 0; vdvArrived = false; rapidStarted = false; egressStarted = false;
+}
+
+/* ── Egress — survivors lift off and fly back north ── */
+function startHeliEgress() {
+  if (egressStarted) return;
+  egressStarted = true;
+  const coords = [...FX.heliRoute].reverse();
+  const d = buildRoute(coords);
+  const t0 = Date.now();
+  heliMarkers.forEach(({ marker, el, heli }, i) => {
+    if (heli._downed) return;
+    egressTimers[i] = setInterval(() => {
+      const frac = Math.min((Date.now() - t0) / FX.egress.flyMs, 1);
+      const { lngLat, bearing } = alongRoute(coords, d, frac);
+      marker.setLngLat([lngLat[0] + heli.offset[0], lngLat[1] + heli.offset[1]]);
+      marker.setRotation(bearing + 90);
+      el.style.opacity = String(Math.max(0, 1 - frac * 1.4));
+      if (frac >= 1) { clearInterval(egressTimers[i]); egressTimers[i] = null; el.style.opacity = '0'; }
+    }, 50);
   });
 }
 
-/* Fires when the last formation member touches down */
+function stopEgress() {
+  egressTimers.forEach((t, i) => { if (t) { clearInterval(t); egressTimers[i] = null; } });
+}
+
+/* Fires when all SURVIVORS touch down */
 function onAllArrived() {
   vdvArrived = true;
   if (vdvEl) vdvEl.style.opacity = '1';
-  if (FX.paratroopers.scenes.includes(current)) paraEls.forEach(el => { el.style.opacity = '1'; });
+  /* Paratroopers drop, then become ground soldiers after 2.5 s */
+  paraEls.forEach(el => { el.style.opacity = '1'; });
+  setTimeout(() => {
+    paraEls.forEach(el => { el.style.opacity = '0'; });
+    groundEls.forEach(el => { el.style.opacity = '1'; });
+  }, 2500);
+  /* 72nd Mech armor advance */
   if (FX.rapidForce.scenes.includes(current)) startRapidForce();
+  /* Helicopters egress after a short hold */
+  setTimeout(startHeliEgress, FX.egress.delayMs);
 }
 
-/* ── Rapid response force ── */
+/* ── 72nd Mechanized Bde armored advance ── */
 function startRapidForce() {
   stopRapidForce();
   if (!rapidEl) return;
   rapidEl.style.opacity = '1';
   rapidStarted = true;
-  const coords = FX.rapidForce.route;
-  const d = buildRoute(coords);
+  const coords = FX.rapidForce.route, d = buildRoute(coords);
   const t0 = Date.now();
   rapidTimer = setInterval(() => {
     const frac = Math.min((Date.now() - t0) / FX.rapidForce.flyMs, 1);
@@ -196,31 +277,29 @@ function addFx() {
   arrivedCount = 0;
   const startCoord = FX.heliRoute[0];
 
-  /* Formation: one marker per helicopter, lateral offset applied from spawn */
+  /* Formation helicopters */
   FX.helicopters.forEach(heli => {
     const el = document.createElement('div');
     el.className = 'heli-marker';
     el.innerHTML = HELI_SVGS[heli.role === 'gunship' ? 'gunship' : 'transport'];
-    el.style.opacity = '0';
-    el.style.transition = 'opacity 0.4s ease';
+    el.style.opacity = '0'; el.style.transition = 'opacity 0.4s ease';
     const marker = new maplibregl.Marker({
       element: el, anchor: 'center',
       rotationAlignment: 'map', pitchAlignment: 'viewport'
     }).setLngLat([startCoord[0] + heli.offset[0], startCoord[1] + heli.offset[1]]).addTo(map);
     heliMarkers.push({ marker, el, heli });
-    heliTimers.push(null);
+    heliTimers.push(null); egressTimers.push(null);
   });
 
-  /* Rapid response (moving blue force marker) */
+  /* 72nd Mech Bde — moving armor marker */
   rapidEl = document.createElement('div');
   rapidEl.className = 'rapid-move-marker';
-  rapidEl.innerHTML = `<span class="rapid-flag">UA · 4th Rapid</span><span class="iconmark blue">${UNIT_ICONS.rapid}</span>`;
-  rapidEl.style.opacity = '0';
-  rapidEl.style.transition = 'opacity 0.4s ease';
+  rapidEl.innerHTML = `<span class="rapid-flag">${FX.rapidForce.label}</span><span class="iconmark blue">${UNIT_ICONS.armor}</span>`;
+  rapidEl.style.opacity = '0'; rapidEl.style.transition = 'opacity 0.4s ease';
   rapidMarker = new maplibregl.Marker({ element: rapidEl, anchor: 'center' })
     .setLngLat(FX.rapidForce.route[0]).addTo(map);
 
-  /* Paratroopers — 3 staggered positions around the airfield */
+  /* Paratroopers */
   const paraOffsets = [[-0.004, 0.005], [0.001, 0.006], [0.005, 0.004]];
   for (let i = 0; i < 3; i++) {
     const el = document.createElement('div'); el.className = 'para-marker';
@@ -233,7 +312,20 @@ function addFx() {
       .addTo(map);
   }
 
-  /* Artillery — two positions, staggered firing */
+  /* Ground soldiers (post-landing swap) — same positions as paratroopers */
+  for (let i = 0; i < 3; i++) {
+    const el = document.createElement('div'); el.className = 'unit-marker red';
+    const badge = document.createElement('span'); badge.className = 'iconmark red';
+    badge.innerHTML = UNIT_ICONS.ground;
+    el.appendChild(badge);
+    el.style.opacity = '0'; el.style.transition = 'opacity 0.6s ease';
+    groundEls.push(el);
+    new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([FX.paratroopers.at[0] + paraOffsets[i][0], FX.paratroopers.at[1] + paraOffsets[i][1]])
+      .addTo(map);
+  }
+
+  /* Artillery flash */
   FX.artillery.positions.forEach((pos, i) => {
     const el = document.createElement('div'); el.className = 'arty-marker';
     el.style.animationDelay = (i * 0.65) + 's'; el.style.opacity = '0';
@@ -241,19 +333,44 @@ function addFx() {
     artyEls.push(el);
     new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(pos).addTo(map);
   });
+
+  /* Kalibr opening strikes (scene 0) — reuse arty flash style */
+  FX.kalibr.positions.forEach((pos, i) => {
+    const el = document.createElement('div'); el.className = 'arty-marker';
+    el.style.animationDelay = (i * 0.5) + 's'; el.style.opacity = '0';
+    el.style.transition = 'opacity 0.3s ease';
+    kalibrEls.push(el);
+    new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(pos).addTo(map);
+  });
 }
 
 function updateFx() {
   if (!heliMarkers.length) return;
 
-  /* Formation helicopters: fly on flyScene, park on other heliScenes, hide otherwise */
-  const hVisible = FX.heliScenes.includes(current);
-  heliMarkers.forEach(({ el }) => { el.style.opacity = hVisible ? '1' : '0'; });
-  if (hVisible && current === FX.flyScene) startHeli();
-  else if (hVisible) parkHeli();
-  else stopHeli();
+  /* Reset all flags when navigating back before the approach scene */
+  if (current < 1) resetHeliState();
 
-  /* VDV unit icon — arrival-gated on flyScene; shows immediately on later scenes */
+  /* Helicopter formation */
+  if (current === 1) {
+    /* Approach: animate 0 → transitFrac with shootdowns */
+    heliMarkers.forEach(({ el, heli }) => { if (!heli._downed) el.style.opacity = '1'; });
+    startHeli(0.0, FX.transitFrac, { shootdowns: true });
+  } else if (current === FX.flyScene) {
+    /* Assault: survivors complete 0.7 → 1.0, land, trigger onAllArrived */
+    heliMarkers.forEach(({ el, heli }) => { if (!heli._downed) el.style.opacity = '1'; });
+    startHeli(FX.transitFrac, 1.0, { onComplete: onAllArrived });
+  } else {
+    /* Other scenes: hide formation and stop timers */
+    heliMarkers.forEach(({ el }) => { el.style.opacity = '0'; });
+    stopHeli(); stopEgress();
+  }
+
+  /* Wreck markers: visible whenever approach/assault scenes are showing */
+  wreckMarkers.forEach(({ el }) => {
+    el.style.opacity = FX.heliScenes.includes(current) ? '1' : '0';
+  });
+
+  /* VDV unit icon — arrival-gated on flyScene; immediate on later scenes */
   if (vdvEl) {
     const vScenes = [2,3,4,7];
     vdvEl.style.opacity = (current === FX.flyScene)
@@ -261,21 +378,32 @@ function updateFx() {
       : (vScenes.includes(current) ? '1' : '0');
   }
 
-  /* Paratroopers — same arrival gate on flyScene, then normal scene-gating */
-  const pVisible = FX.paratroopers.scenes.includes(current);
-  const pShow = (current === FX.flyScene) ? (pVisible && vdvArrived) : pVisible;
-  paraEls.forEach(el => { el.style.opacity = pShow ? '1' : '0'; });
+  /* Paratroopers (chutes) — only shown during flyScene, after arrival */
+  paraEls.forEach(el => {
+    el.style.opacity = (current === FX.flyScene && vdvArrived) ? '1' : '0';
+  });
 
-  /* Rapid force — starts moving on first entry to its scenes */
+  /* Ground soldiers — shown on groundScenes; but only after arrival on flyScene */
+  groundEls.forEach(el => {
+    const onFlyScene = current === FX.flyScene;
+    const show = onFlyScene ? vdvArrived : FX.groundScenes.includes(current);
+    el.style.opacity = show ? '1' : '0';
+  });
+
+  /* 72nd Mech armor advance */
   if (rapidEl) {
     const rVisible = FX.rapidForce.scenes.includes(current);
     rapidEl.style.opacity = rVisible ? '1' : '0';
     if (rVisible && !rapidStarted) startRapidForce();
   }
 
-  /* Artillery */
+  /* Artillery flash */
   const aVisible = FX.artillery.scenes.includes(current);
   artyEls.forEach(el => { el.style.opacity = aVisible ? '1' : '0'; });
+
+  /* Kalibr strikes (scene 0) */
+  const kVisible = FX.kalibr.scenes.includes(current);
+  kalibrEls.forEach(el => { el.style.opacity = kVisible ? '1' : '0'; });
 }
 
 /* ── Overlay layers ── */
@@ -321,8 +449,7 @@ function addPointMarkers() {
   sceneMarkers.length = 0;
   for (const f of OVERLAYS.units.features) {
     const props = f.properties;
-    /* Rapid force is now a moving FX marker — skip static rendering */
-    if (props.kind === 'rapid') continue;
+    /* 72nd Mech is a moving FX marker — the remaining rapid-kind is the static garrison */
 
     const wrap = document.createElement('div');
     wrap.className = 'unit-marker ' + (props.side || '');

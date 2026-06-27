@@ -7,19 +7,19 @@
 const SCENES = [
   { date: '24 Feb 2022 · ~05:00', tag: 'verified',
     camera: { center: [30.45, 50.62], zoom: 8.4, pitch: 42, bearing: 0 }, duration: 9500, show: ['border'],
-    caption: 'Before dawn on 24 February 2022, Russia announced a “special military operation.” Missile and air strikes opened the war across Ukraine, hitting air-defence sites north of the Dnipro and the outskirts of Kyiv.' },
-  { date: '24 Feb · morning', tag: 'verified',
+    caption: 'Before dawn on 24 February 2022, Russia announced the “special military operation” at ~05:30. Between 06:00 and 07:00, Kalibr cruise missiles struck Antonov Airport and the nearby National Guard base — the war reached Hostomel on day one, hour one.' },
+  { date: '24 Feb · ~09:30', tag: 'verified',
     camera: { center: [30.36, 50.86], zoom: 9.3, pitch: 56, bearing: -28 }, duration: 9500, show: ['heli-route'],
-    caption: "A formation of Russian helicopters — Mi-8 transports escorted by Ka-52 gunships — crossed from Belarus and flew low along the Dnipro toward Hostomel, about 10 km from Kyiv. Several were hit by Ukrainian small-arms and missile fire on the approach." },
-  { date: '24 Feb · midday', tag: 'verified',
+    caption: 'A formation of 20–34 Russian helicopters — Ka-52 gunships and Mi-8 transports — left Bolshoy Bokov airfield in Belarus at ~09:30 and flew low up the Dnipro corridor. Ukrainian small-arms and MANPADS fire hit the formation en route; at least two aircraft were downed, including a Ka-52 whose crew ejected. The survivors pressed on.' },
+  { date: '24 Feb · ~11:00', tag: 'verified',
     camera: { center: [30.192, 50.603], zoom: 12.3, pitch: 60, bearing: 22 }, duration: 9500, show: ['heli-route', 'airfield'],
-    caption: "Russian airborne troops (VDV) air-assaulted Antonov Airport at Hostomel. The aim was to seize the runway intact and open an airbridge — flying in reinforcements to strike directly at the capital." },
+    caption: 'Survivors arrived over Hostomel at ~11:00. Ka-52s rocketed the field perimeter to suppress the garrison — ~200–300 troops of Ukraine\'s 4th Rapid Reaction Brigade, garrisoned there only since 23 February. Some 200–300 VDV paratroopers of the 31st Guards Air Assault and 45th Guards Spetsnaz assaulted from the transports, aiming to seize the runway and open an airbridge to Kyiv.' },
   { date: '24 Feb · ~15:30', tag: 'contested',
     camera: { center: [30.20, 50.605], zoom: 12.9, pitch: 62, bearing: 36 }, duration: 9500, show: ['ua-counter', 'airfield'],
-    caption: "Ukraine ordered a counterattack. National Guard units, backed by artillery and air strikes, contested the airfield through the afternoon. By evening Ukrainian sources said it had been retaken — control on the night of the 24th was disputed." },
+    caption: 'General Zaluzhny ordered the 72nd Mechanized Brigade to counterattack, supported by the 4th Rapid Reaction Brigade, the Georgian Legion, and Su-24/MiG-29 air support. Russian VDV had no armor on Day 1 — they depended entirely on Ka-52 and Su-25 air cover. Control of the field was contested through the afternoon.' },
   { date: '24 Feb · evening', tag: 'verified',
     camera: { center: [30.20, 50.60], zoom: 12.1, pitch: 54, bearing: 10 }, duration: 9000, show: ['airfield'],
-    caption: "The fighting left the runway cratered and damaged. Whatever the exact control, the field could no longer receive heavy transports — the planned Il-76 airbridge did not land on Day 1." },
+    caption: '18 Il-76 transport aircraft carrying reinforcements could not land on the cratered, contested runway and turned back. The planned airbridge failed on Day 1. Whatever the exact overnight control, the field could no longer receive the heavy lift the operation depended on.' },
   { date: '24 Feb · afternoon', tag: 'verified',
     camera: { center: [30.10, 51.18], zoom: 8.5, pitch: 46, bearing: -10 }, duration: 9000, show: ['border', 'ru-ground'],
     caption: "To the north, Russian ground forces crossed from Belarus through the Chornobyl exclusion zone and seized the Chornobyl nuclear plant, opening an overland route south toward Hostomel." },
@@ -65,9 +65,9 @@ const OVERLAYS = {
     { type: 'Feature', properties: { layer: 'units', side: 'blue', name: 'Irpin' }, geometry: { type: 'Point', coordinates: [30.247,50.530] } },
     { type: 'Feature', properties: { layer: 'units', side: 'blue', name: 'Vasylkiv air base' }, geometry: { type: 'Point', coordinates: [30.327,50.241] } },
     { type: 'Feature', properties: { layer: 'units', side: 'grey', name: 'Boryspil airport' }, geometry: { type: 'Point', coordinates: [30.895,50.345] } },
-    /* Force markers (page 8) — VDV airborne and National Guard rapid response */
-    { type: 'Feature', properties: { layer: 'units', side: 'red', kind: 'airborne', name: 'VDV 45th Guards', scenes: [2,3,4,7] }, geometry: { type: 'Point', coordinates: [30.180,50.610] } },
-    { type: 'Feature', properties: { layer: 'units', side: 'blue', kind: 'rapid', name: '4th Rapid Response Bn', scenes: [3] }, geometry: { type: 'Point', coordinates: [30.240,50.572] } }
+    /* Force markers — VDV airborne (arrival-gated), garrison static, 72nd Mech via FX */
+    { type: 'Feature', properties: { layer: 'units', side: 'red', kind: 'airborne', name: 'VDV 31st Gds / 45th Spetsnaz', scenes: [2,3,4,7] }, geometry: { type: 'Point', coordinates: [30.180,50.610] } },
+    { type: 'Feature', properties: { layer: 'units', side: 'blue', kind: 'rapid', name: '4th Rapid Reaction Bde (garrison)', scenes: [2,3] }, geometry: { type: 'Point', coordinates: [30.185,50.608] } }
   ] },
   /* Combat ember markers — Antonov removed (artillery FX covers it); Ivankiv + Vasylkiv remain */
   fire: { type: 'FeatureCollection', features: [
@@ -76,35 +76,34 @@ const OVERLAYS = {
   ] }
 };
 
-/* FX — animated markers: helicopter formation, paratroopers, artillery, rapid force. */
+/* FX — animated markers. Scene indices are 0-based. */
 const FX = {
-  /* Shared flight parameters */
-  heliRoute:  OVERLAYS['heli-route'].features[0].geometry.coordinates,
-  heliAt:     [30.205, 50.604],   /* park position at airfield */
-  flyScene:   1,
-  heliScenes: [1, 2],
-  flyMs:      9000,
-  /* Formation: Ka-52 gunship leads, two Mi-8 transports follow with staggered departure */
+  heliRoute:   OVERLAYS['heli-route'].features[0].geometry.coordinates,
+  heliAt:      [30.205, 50.604],
+  flyScene:    2,            /* landing happens in the ASSAULT scene (idx 2) */
+  transitFrac: 0.70,         /* approach (idx 1) animates route 0 → transitFrac */
+  heliScenes:  [1, 2],
+  flyMs:       9000,         /* ms for the FULL route (0 → 1) */
+  /* Formation: Ka-52 leads and is shot down; two Mi-8 transports survive */
   helicopters: [
-    { role: 'gunship',   label: 'Ka-52', lagMs: 0,    offset: [-0.004,  0.004] },
-    { role: 'transport', label: 'Mi-8',  lagMs: 900,  offset: [ 0.000,  0.000] },
-    { role: 'transport', label: 'Mi-8',  lagMs: 1800, offset: [ 0.004, -0.003] }
+    { role: 'gunship',   label: 'Ka-52', lagMs: 0,    offset: [-0.004,  0.004], fate: 'downed',  downAtFrac: 0.55 },
+    { role: 'transport', label: 'Mi-8',  lagMs: 900,  offset: [ 0.000,  0.000], fate: 'survive' },
+    { role: 'transport', label: 'Mi-8',  lagMs: 1800, offset: [ 0.004, -0.003], fate: 'survive' }
   ],
-  /* VDV paratroopers — appear only after formation lands (onAllArrived callback) */
-  paratroopers: {
-    at: [30.192, 50.603],
-    scenes: [2, 3, 7]
-  },
+  egress: { delayMs: 3500, flyMs: 6000 }, /* survivors lift off and fly back north */
+  /* Paratroopers drop on landing (scene 2 only); ground soldiers shown 2,3,7 */
+  paratroopers: { at: [30.192, 50.603], scenes: [2] },
+  groundScenes: [2, 3, 7],
   /* Artillery flash */
-  artillery: {
-    positions: [[30.205, 50.600], [30.218, 50.608]],
-    scenes: [3, 4, 7]
-  },
-  /* Rapid response force — moves along ua-counter route after landing; shows on scenes 3,4 */
+  artillery: { positions: [[30.205, 50.600], [30.218, 50.608]], scenes: [3, 4, 7] },
+  /* Kalibr opening strikes (scene 0) — reuse arty flash style */
+  kalibr: { positions: [[30.192, 50.603], [30.208, 50.614]], scenes: [0] },
+  /* 72nd Mechanized Bde armored advance — halts short of airfield */
   rapidForce: {
-    route: [[30.27, 50.57], [30.235, 50.585], [30.205, 50.604]],
+    route:  [[30.27, 50.57], [30.245, 50.58], [30.228, 50.588]],
     scenes: [3, 4],
-    flyMs: 4500
+    flyMs:  9000,
+    label:  '72nd Mech Bde'
   }
 };
 
