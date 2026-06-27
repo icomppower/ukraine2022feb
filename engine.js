@@ -15,7 +15,7 @@ const sceneMarkers = [];
 const FLY_DURATION = 3600;
 
 /* FX state */
-let heliMarker = null, heliEl = null, heliRaf = null, heliStart = null;
+let heliMarker = null, heliEl = null, heliTimer = null;
 const paraEls = [], artyEls = [];
 
 /* Inline SVG glyphs for force-unit badges */
@@ -103,24 +103,24 @@ function alongRoute(coords, d, frac) {
 /* ── Helicopter RAF animation ── */
 function startHeli() {
   stopHeli();
-  heliStart = null;
   const coords = FX.helicopter.route;
   const d = buildRoute(coords);
   const flyMs = FX.helicopter.flyMs || 9000;
-  function step(ts) {
-    if (!heliStart) heliStart = ts;
-    const frac = Math.min((ts - heliStart) / flyMs, 1);
+  const t0 = Date.now();
+  function step() {
+    const frac = Math.min((Date.now() - t0) / flyMs, 1);
     const { lngLat, bearing } = alongRoute(coords, d, frac);
     heliMarker.setLngLat(lngLat);
-    heliMarker.setRotation(bearing);
-    if (frac < 1) heliRaf = requestAnimationFrame(step);
-    else parkHeli();
+    /* SVG body faces right (east=90°), so subtract 90° to align with compass bearing */
+    heliMarker.setRotation(bearing - 90);
+    if (frac >= 1) { clearInterval(heliTimer); heliTimer = null; parkHeli(); }
   }
-  heliRaf = requestAnimationFrame(step);
+  step();
+  heliTimer = setInterval(step, 50);
 }
 
 function stopHeli() {
-  if (heliRaf) { cancelAnimationFrame(heliRaf); heliRaf = null; }
+  if (heliTimer) { clearInterval(heliTimer); heliTimer = null; }
 }
 
 function parkHeli() {
@@ -135,7 +135,8 @@ function addFx() {
   heliEl.className = 'heli-marker';
   heliEl.innerHTML = HELI_SVG;
   heliEl.style.opacity = '0';
-  heliMarker = new maplibregl.Marker({ element: heliEl, anchor: 'center', rotationAlignment: 'map' })
+  heliEl.style.transition = 'opacity 0.4s ease';
+  heliMarker = new maplibregl.Marker({ element: heliEl, anchor: 'center' })
     .setLngLat(FX.helicopter.route[0]).addTo(map);
 
   // Paratroopers — 3 staggered positions around the airfield
@@ -145,7 +146,10 @@ function addFx() {
     el.className = 'para-marker';
     el.innerHTML = PARA_SVG;
     el.style.opacity = '0';
-    el.style.animationDelay = (i * 0.5) + 's';
+    el.style.transition = 'opacity 0.4s ease';
+    /* delay must go on the SVG that carries the animation, not the wrapper */
+    const svg = el.querySelector('.para-svg');
+    if (svg) svg.style.animationDelay = (i * 0.7) + 's';
     paraEls.push(el);
     new maplibregl.Marker({ element: el, anchor: 'center' })
       .setLngLat([FX.paratroopers.at[0] + offsets[i][0], FX.paratroopers.at[1] + offsets[i][1]])
@@ -156,8 +160,9 @@ function addFx() {
   FX.artillery.positions.forEach((pos, i) => {
     const el = document.createElement('div');
     el.className = 'arty-marker';
-    el.style.animationDelay = (i * 0.55) + 's';
+    el.style.animationDelay = (i * 0.65) + 's';
     el.style.opacity = '0';
+    el.style.transition = 'opacity 0.3s ease';
     artyEls.push(el);
     new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(pos).addTo(map);
   });

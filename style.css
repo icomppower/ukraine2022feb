@@ -148,7 +148,7 @@ button { font-family: inherit; cursor: pointer; }
 
 /* Helicopter */
 .heli-marker { pointer-events: none; filter: drop-shadow(0 1px 4px rgba(0,0,0,0.85)); }
-.heli-svg { width: 54px; height: auto; }
+.heli-svg { width: 62px; height: auto; }
 .heli-rotor {
   transform-box: fill-box; transform-origin: center;
   animation: rotor-spin 0.25s linear infinite;
@@ -165,20 +165,18 @@ button { font-family: inherit; cursor: pointer; }
 /* Paratroopers */
 .para-marker { pointer-events: none; }
 .para-svg {
-  width: 22px; height: auto;
+  width: 26px; height: auto;
   filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8));
-  animation: para-fall 3.6s ease-in-out infinite;
+  animation: para-fall 2.8s ease-in-out infinite alternate;
 }
 @keyframes para-fall {
-  0%   { transform: translateY(-20px); opacity: 0; }
-  12%  { opacity: 1; }
-  85%  { opacity: 0.9; }
-  100% { transform: translateY(20px); opacity: 0; }
+  from { transform: translateY(-18px); }
+  to   { transform: translateY(18px); }
 }
 
 /* Artillery flash */
 .arty-marker {
-  width: 20px; height: 20px; border-radius: 50%; pointer-events: none;
+  width: 26px; height: 26px; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle, #fff 0%, #ffd24a 35%, rgba(226,59,59,0.55) 70%, transparent 100%);
   box-shadow: 0 0 10px 4px rgba(255,200,0,0.55);
   animation: arty-fire 1.4s ease-out infinite;
