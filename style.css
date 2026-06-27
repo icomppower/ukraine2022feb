@@ -1,0 +1,169 @@
+/* style.css — look & feel (forked from the Battle of Hong Kong build) */
+:root {
+  --bg: #0a0e14;
+  --ink: #f2f4f8;
+  --muted: #9aa7b8;
+  --red: #e23b3b;
+  --blue: #3b76e2;
+  --grey: #b9c2cf;
+  --accent: #ffd24a;
+  --panel: rgba(12, 16, 24, 0.82);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg); color: var(--ink); overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+#map { position: absolute; inset: 0; }
+button { font-family: inherit; cursor: pointer; }
+
+/* Intro gate */
+#intro {
+  position: absolute; inset: 0; z-index: 50;
+  display: grid; place-items: center;
+  background: radial-gradient(120% 90% at 50% 30%, rgba(10,14,20,0.72), rgba(5,7,11,0.96));
+  backdrop-filter: blur(3px); transition: opacity .6s ease;
+}
+#intro.hidden { opacity: 0; pointer-events: none; }
+.intro-card {
+  max-width: min(560px, 88vw); padding: 38px 34px; text-align: center;
+  background: var(--panel); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 18px; box-shadow: 0 24px 80px rgba(0,0,0,.6);
+}
+.intro-card h1 { margin: 0 0 10px; font-size: clamp(24px, 5.4vw, 38px); letter-spacing: .01em; line-height: 1.2; }
+.intro-card .sub { margin: 0 0 26px; color: var(--muted); line-height: 1.6; }
+.start {
+  background: rgba(255,255,255,.10); color: #fff; border: 1px solid rgba(255,255,255,.22);
+  padding: 13px 30px; font-size: 17px; border-radius: 999px; font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45); transition: transform .12s ease, background .2s ease;
+}
+.start:hover { transform: translateY(-2px); background: rgba(255,255,255,.18); }
+.disclaimer { margin: 24px 0 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.disclaimer b { color: var(--ink); font-weight: 700; }
+
+/* Top bar */
+#topbar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 30;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(5,8,12,.7), transparent);
+}
+#topbar > * { pointer-events: auto; }
+.brand { font-weight: 700; letter-spacing: .03em; text-shadow: 0 1px 6px rgba(0,0,0,.7); }
+.spacer { flex: 1; }
+.ghost {
+  background: rgba(255,255,255,.06); color: var(--ink);
+  border: 1px solid rgba(255,255,255,.14); padding: 6px 12px; border-radius: 8px; font-size: 13px;
+}
+.ghost:hover { background: rgba(255,255,255,.14); }
+
+/* Caption / timeline HUD */
+#hud {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  z-index: 30; width: min(720px, 92vw);
+  background: var(--panel); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px; padding: 16px 20px 14px; box-shadow: 0 16px 50px rgba(0,0,0,.5);
+}
+.meta { display: flex; align-items: center; gap: 10px; }
+#date { font-size: 12px; letter-spacing: .14em; color: var(--accent); font-weight: 700; }
+#caption { margin: 6px 0 12px; font-size: clamp(15px, 2.4vw, 18px); line-height: 1.62; min-height: 3em; }
+#controls { display: flex; align-items: center; gap: 8px; }
+.ctl {
+  background: rgba(255,255,255,.08); color: var(--ink); border: 1px solid rgba(255,255,255,.16);
+  width: 40px; height: 36px; border-radius: 9px; font-size: 14px; flex: none;
+}
+.ctl:hover { background: rgba(255,255,255,.18); }
+#playBtn { background: var(--accent); color: #1a1205; border-color: var(--accent); font-weight: 700; }
+
+/* Evidence tag chip */
+.tag {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .1em;
+  padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; text-transform: uppercase;
+}
+.tag.verified  { color: #7ee0a6; background: rgba(60,200,120,.13); border-color: rgba(60,200,120,.5); }
+.tag.approx    { color: #ffd98a; background: rgba(255,200,90,.13);  border-color: rgba(255,200,90,.5); }
+.tag.contested { color: #ff9a9a; background: rgba(226,59,59,.14);   border-color: rgba(226,59,59,.55); }
+
+#dots { display: flex; gap: 7px; margin-left: 8px; flex-wrap: wrap; }
+.dot {
+  width: 11px; height: 11px; border-radius: 50%; padding: 0;
+  background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.25);
+}
+.dot.active { background: var(--accent); border-color: var(--accent); transform: scale(1.2); }
+
+/* Legend */
+#legend {
+  position: absolute; left: 16px; bottom: 26px; z-index: 25;
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--panel); border: 1px solid rgba(255,255,255,.08);
+  padding: 10px 12px; border-radius: 10px; font-size: 12px; color: var(--muted);
+}
+#legend span { display: flex; align-items: center; gap: 7px; }
+.sw { width: 12px; height: 12px; border-radius: 50%; display: inline-block; border: 1.5px solid #fff; }
+.sw.red { background: var(--red); }
+.sw.blue { background: var(--blue); }
+.sw.grey { background: var(--grey); }
+
+/* Point markers (DOM, always visible) */
+.unit-marker { display: flex; align-items: center; gap: 5px; pointer-events: none; }
+.unit-marker .dotmark {
+  width: 13px; height: 13px; border-radius: 50%; flex: none;
+  border: 1.6px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, .6);
+}
+.unit-marker.red .dotmark { background: var(--red); }
+.unit-marker.blue .dotmark { background: var(--blue); }
+.unit-marker.grey .dotmark { background: var(--grey); }
+.unit-marker .lbl {
+  font-size: 11px; color: #fff; white-space: nowrap; text-shadow: 0 1px 3px #000, 0 0 4px #000;
+}
+
+/* Unit icon badge (page 8) */
+.iconmark {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.6px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.6); flex: none;
+}
+.iconmark.red  { background: var(--red);  color: #fff; }
+.iconmark.blue { background: var(--blue); color: #fff; }
+.iconmark.grey { background: var(--grey); color: #000; }
+.iconmark svg  { width: 13px; height: 13px; }
+
+/* Combat ember marker (page 8) */
+.fire-marker { display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.fire-marker .ember {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: radial-gradient(circle, #ffd24a 0%, rgba(226,59,59,0.7) 60%, transparent 100%);
+  box-shadow: 0 0 8px 4px rgba(255,180,0,0.5);
+  animation: ember-flicker 0.85s ease-in-out infinite alternate;
+}
+@keyframes ember-flicker {
+  from { opacity: 0.7; transform: scale(0.9); box-shadow: 0 0 6px 3px rgba(255,180,0,0.4); }
+  to   { opacity: 1.0; transform: scale(1.1); box-shadow: 0 0 12px 6px rgba(255,180,0,0.7); }
+}
+
+/* Sources panel */
+#sources {
+  position: absolute; top: 0; right: 0; bottom: 0; z-index: 40;
+  width: min(420px, 90vw); transform: translateX(105%); transition: transform .35s ease;
+  background: var(--panel); backdrop-filter: blur(6px);
+  border-left: 1px solid rgba(255,255,255,.1); padding: 18px 22px; overflow-y: auto;
+}
+#sources.open { transform: translateX(0); }
+.src-head { display: flex; align-items: center; justify-content: space-between; }
+#sources h2 { font-size: 17px; margin: 4px 0 14px; }
+#sourceList { margin: 0; padding-left: 18px; }
+#sourceList li { margin: 0 0 14px; line-height: 1.55; font-size: 13.5px; color: var(--muted); }
+#sourceList li:first-child { color: var(--ink); list-style: none; margin-left: -18px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+  padding: 10px 12px; border-radius: 8px; font-size: 12.5px; }
+
+.maplibregl-ctrl-attrib { font-size: 10px; }
+
+@media (max-width: 560px) {
+  #legend { bottom: auto; top: 56px; }
+  #hud { bottom: 14px; padding: 12px 14px; }
+  #caption { min-height: 4.2em; }
+}

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="description" content="A neutral, sourced, camera-flying map of the first two days of Russia's invasion of Ukraine — the Kyiv / Hostomel axis, 24–25 February 2022.">
+  <title>Kyiv · Day 1–2 · 24–25 February 2022</title>
+
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+  <link href="style.css" rel="stylesheet">
+</head>
+<body>
+  <!-- the map -->
+  <div id="map"></div>
+
+  <!-- intro gate / title screen (also unlocks audio autoplay) -->
+  <div id="intro">
+    <div class="intro-card">
+      <h1>The Kyiv Axis, 24–25 February 2022</h1>
+      <p class="sub">
+        The first forty-eight hours of the invasion of Ukraine, told over the real
+        terrain — the airborne assault on Hostomel and the race for the capital.
+      </p>
+      <button id="startBtn" class="start">▶&nbsp;&nbsp;Begin the tour</button>
+      <p class="disclaimer">
+        A documentary reconstruction. Present-day satellite imagery; unit positions and routes
+        are approximate and drawn from published sources. Each scene is tagged
+        <b>verified</b>, <b>approx.</b> or <b>contested</b> — see Sources&nbsp;&amp;&nbsp;Notes.
+      </p>
+    </div>
+  </div>
+
+  <!-- Top HUD -->
+  <header id="topbar">
+    <span class="brand">Kyiv · 24–25 Feb 2022</span>
+    <span class="spacer"></span>
+    <button id="sourcesBtn" class="ghost">Sources &amp; Notes</button>
+  </header>
+
+  <!-- Caption + timeline HUD -->
+  <div id="hud">
+    <div class="meta">
+      <span id="date"></span>
+      <span id="tag" class="tag"></span>
+    </div>
+    <p id="caption"></p>
+    <div id="controls">
+      <button id="prevBtn" class="ctl" aria-label="Previous scene">◄</button>
+      <button id="playBtn" class="ctl" aria-label="Play">►</button>
+      <button id="nextBtn" class="ctl" aria-label="Next scene">►|</button>
+      <div id="dots"></div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div id="legend">
+    <span><i class="sw red"></i>Russian forces</span>
+    <span><i class="sw blue"></i>Ukrainian forces</span>
+    <span><i class="sw grey"></i>Contested / civil site</span>
+  </div>
+
+  <!-- Sources / Notes panel -->
+  <aside id="sources">
+    <div class="src-head">
+      <h2>Sources &amp; Notes</h2>
+      <button id="closeSources" class="ghost">✕</button>
+    </div>
+    <ul id="sourceList"></ul>
+  </aside>
+
+  <!-- Optional music. Drop an mp3 named music.mp3 in this folder, or leave it out. -->
+  <audio id="music" src="music.mp3" loop preload="none"></audio>
+
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="scenes.js"></script>
+  <script src="engine.js"></script>
+</body>
+</html>
