@@ -147,7 +147,18 @@ button { font-family: inherit; cursor: pointer; }
 /* ── Animated FX ── */
 
 /* Helicopter */
-.heli-marker { pointer-events: none; filter: drop-shadow(0 1px 4px rgba(0,0,0,0.85)); }
+.heli-marker {
+  pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  filter: drop-shadow(0 1px 4px rgba(0,0,0,0.85));
+}
+.heli-flag {
+  background: var(--red); color: #fff;
+  font-size: 9px; font-weight: 800; letter-spacing: .09em;
+  padding: 1px 6px; border-radius: 3px; white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.25);
+}
 .heli-svg { width: 62px; height: auto; }
 .heli-rotor {
   transform-box: fill-box; transform-origin: center;

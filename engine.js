@@ -32,13 +32,14 @@ const UNIT_ICONS = {
   </svg>`
 };
 
-/* Helicopter silhouette SVG (rotor spins via CSS) */
-const HELI_SVG = `<svg class="heli-svg" viewBox="0 0 44 22" fill="white" xmlns="http://www.w3.org/2000/svg">
-  <rect class="heli-rotor" x="2" y="4" width="40" height="2.5" rx="1.25"/>
-  <ellipse cx="19" cy="13" rx="11" ry="5"/>
-  <ellipse cx="12" cy="12" rx="6" ry="4.5" fill="rgba(180,220,255,0.35)" stroke="none"/>
-  <rect x="28" y="12" width="13" height="2" rx="1"/>
-  <rect class="heli-tail-rotor" x="39" y="8" width="2" height="9" rx="1"/>
+/* Helicopter SVG — red body (Russian forces), white rotors, RU·VDV badge above */
+const HELI_SVG = `<span class="heli-flag">RU · VDV</span>
+<svg class="heli-svg" viewBox="0 0 44 22" xmlns="http://www.w3.org/2000/svg">
+  <rect class="heli-rotor" x="2" y="4" width="40" height="2.5" rx="1.25" fill="rgba(255,255,255,0.92)"/>
+  <ellipse cx="19" cy="13" rx="11" ry="5" fill="#e23b3b"/>
+  <ellipse cx="12" cy="12" rx="6" ry="4.5" fill="rgba(255,255,255,0.18)" stroke="none"/>
+  <rect x="28" y="12" width="13" height="2" rx="1" fill="#c42b2b"/>
+  <rect class="heli-tail-rotor" x="39" y="8" width="2" height="9" rx="1" fill="rgba(255,255,255,0.92)"/>
 </svg>`;
 
 /* Paratrooper canopy SVG (drifts down via CSS) */
