@@ -8,8 +8,11 @@ let current = 0;
 let playing = false;
 let started = false;
 let timer = null;
+let driftTimeout = null;
+let drifting = false;
 const FADE = {};
 const sceneMarkers = [];
+const FLY_DURATION = 3600;
 
 /* Inline SVG glyphs for force-unit badges (page 8) */
 const UNIT_ICONS = {
@@ -32,9 +35,10 @@ const map = new maplibregl.Map({
     glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
     sources: {
       sat: { type: 'raster',
-        tiles: ['https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg'],
-        tileSize: 256, maxzoom: 14,
-        attribution: 'Sentinel-2 cloudless 2016 - https://s2maps.eu by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016 & 2017)' },
+        /* Fallback: 'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg' */
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256, maxzoom: 18,
+        attribution: 'Tiles © Esri — Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community' },
       dem: { type: 'raster-dem',
         tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
         tileSize: 256, encoding: 'terrarium', maxzoom: 15,
@@ -163,11 +167,28 @@ function renderDots() {
   });
 }
 
+function stopDrift() {
+  clearTimeout(driftTimeout); driftTimeout = null;
+  if (drifting) { map.stop(); drifting = false; }
+}
+
+function startDrift(s) {
+  const remaining = s.duration - FLY_DURATION - 200;
+  if (remaining < 1000) return;
+  driftTimeout = setTimeout(() => {
+    if (!playing) return;
+    drifting = true;
+    map.easeTo({ bearing: map.getBearing() + 6, duration: remaining, easing: t => t });
+  }, FLY_DURATION + 100);
+}
+
 function playScene(i, instant) {
   current = Math.max(0, Math.min(i, SCENES.length - 1));
   const s = SCENES[current];
-  map.flyTo({ ...s.camera, duration: instant ? 0 : 3200, essential: true, curve: 1.3 });
+  stopDrift();
+  map.flyTo({ ...s.camera, duration: instant ? 0 : FLY_DURATION, essential: true, curve: 1.6 });
   applyLayers(); updateMarkers(); renderCaption(); renderDots();
+  if (!instant) startDrift(s);
   clearTimeout(timer);
   if (playing && current < SCENES.length - 1) timer = setTimeout(() => playScene(current + 1), s.duration);
   if (playing && current === SCENES.length - 1) setTimeout(() => { playing = false; updatePlayBtn(); }, s.duration);
@@ -198,13 +219,24 @@ function ensureOverlays() {
   if (!map.isStyleLoaded()) { map.once('idle', ensureOverlays); return; }
   overlaysReady = true; addOverlays();
 }
-map.on('load', () => { map.setTerrain({ source: 'dem', exaggeration: 1.5 }); ensureOverlays(); });
-map.on('dragstart', () => { playing = false; clearTimeout(timer); updatePlayBtn(); });
+map.on('load', () => {
+  map.setTerrain({ source: 'dem', exaggeration: 2.6 });
+  map.setSky({
+    'sky-color': '#1a2233',
+    'sky-horizon-blend': 0.5,
+    'horizon-color': '#8db4d4',
+    'horizon-fog-blend': 0.5,
+    'fog-color': '#2c3a5a',
+    'fog-ground-blend': 0.9
+  });
+  ensureOverlays();
+});
+map.on('dragstart', () => { playing = false; clearTimeout(timer); stopDrift(); updatePlayBtn(); });
 
 els.playBtn.onclick = () => {
   if (!started) { startTour(); return; }
   playing = !playing;
-  if (playing) playScene(current); else clearTimeout(timer);
+  if (playing) playScene(current); else { clearTimeout(timer); stopDrift(); }
   updatePlayBtn();
 };
 document.getElementById('prevBtn').onclick = () => goTo(current - 1);
