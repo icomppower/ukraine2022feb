@@ -76,22 +76,35 @@ const OVERLAYS = {
   ] }
 };
 
-/* FX — animated markers: helicopter, paratroopers, artillery. Gated per scene (0-indexed). */
+/* FX — animated markers: helicopter formation, paratroopers, artillery, rapid force. */
 const FX = {
-  helicopter: {
-    route: OVERLAYS['heli-route'].features[0].geometry.coordinates,
-    at: [30.205, 50.604],
-    flyScene: 1,
-    scenes: [1, 2],
-    flyMs: 9000
-  },
+  /* Shared flight parameters */
+  heliRoute:  OVERLAYS['heli-route'].features[0].geometry.coordinates,
+  heliAt:     [30.205, 50.604],   /* park position at airfield */
+  flyScene:   1,
+  heliScenes: [1, 2],
+  flyMs:      9000,
+  /* Formation: Ka-52 gunship leads, two Mi-8 transports follow with staggered departure */
+  helicopters: [
+    { role: 'gunship',   label: 'Ka-52', lagMs: 0,    offset: [-0.004,  0.004] },
+    { role: 'transport', label: 'Mi-8',  lagMs: 900,  offset: [ 0.000,  0.000] },
+    { role: 'transport', label: 'Mi-8',  lagMs: 1800, offset: [ 0.004, -0.003] }
+  ],
+  /* VDV paratroopers — appear only after formation lands (onAllArrived callback) */
   paratroopers: {
     at: [30.192, 50.603],
     scenes: [2, 3, 7]
   },
+  /* Artillery flash */
   artillery: {
     positions: [[30.205, 50.600], [30.218, 50.608]],
     scenes: [3, 4, 7]
+  },
+  /* Rapid response force — moves along ua-counter route after landing; shows on scenes 3,4 */
+  rapidForce: {
+    route: [[30.27, 50.57], [30.235, 50.585], [30.205, 50.604]],
+    scenes: [3, 4],
+    flyMs: 4500
   }
 };
 

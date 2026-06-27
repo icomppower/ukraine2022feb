@@ -15,7 +15,11 @@ const sceneMarkers = [];
 const FLY_DURATION = 3600;
 
 /* FX state */
-let heliMarker = null, heliEl = null, heliTimer = null;
+const heliMarkers = [];    /* [{ marker, el, heli }] per formation member */
+const heliTimers  = [];    /* setInterval handle per formation member */
+let   arrivedCount = 0;
+let rapidMarker = null, rapidEl = null, rapidTimer = null, rapidStarted = false;
+let vdvEl = null, vdvArrived = false;
 const paraEls = [], artyEls = [];
 
 /* Inline SVG glyphs for force-unit badges */
@@ -32,15 +36,28 @@ const UNIT_ICONS = {
   </svg>`
 };
 
-/* Helicopter SVG — red body (Russian forces), white rotors, RU·VDV badge above */
-const HELI_SVG = `<span class="heli-flag">RU · VDV</span>
+/* SVG variants — tail-rotor is on the RIGHT (x≈39-44), so nose faces LEFT (west).
+ * With rotationAlignment:'map', setRotation(bearing+90) aligns nose to compass heading. */
+const HELI_SVGS = {
+  /* Ka-52 gunship: leaner body, chin gun, no badge */
+  gunship: `<svg class="heli-svg heli-gunship" viewBox="0 0 48 18" xmlns="http://www.w3.org/2000/svg">
+  <rect class="heli-rotor" x="2" y="3" width="44" height="2" rx="1" fill="rgba(255,255,255,0.92)"/>
+  <ellipse cx="21" cy="11" rx="13" ry="3.5" fill="#e23b3b"/>
+  <ellipse cx="13" cy="10" rx="5" ry="3" fill="rgba(255,255,255,0.15)" stroke="none"/>
+  <rect x="7" y="13.5" width="9" height="1.5" rx="0.75" fill="#9b1c1c"/>
+  <rect x="32" y="10" width="14" height="1.5" rx="0.75" fill="#c42b2b"/>
+  <rect class="heli-tail-rotor" x="44" y="6" width="2" height="7" rx="1" fill="rgba(255,255,255,0.92)"/>
+</svg>`,
+  /* Mi-8 transport: broader body, RU·VDV badge */
+  transport: `<span class="heli-flag">RU · VDV</span>
 <svg class="heli-svg" viewBox="0 0 44 22" xmlns="http://www.w3.org/2000/svg">
   <rect class="heli-rotor" x="2" y="4" width="40" height="2.5" rx="1.25" fill="rgba(255,255,255,0.92)"/>
   <ellipse cx="19" cy="13" rx="11" ry="5" fill="#e23b3b"/>
   <ellipse cx="12" cy="12" rx="6" ry="4.5" fill="rgba(255,255,255,0.18)" stroke="none"/>
   <rect x="28" y="12" width="13" height="2" rx="1" fill="#c42b2b"/>
   <rect class="heli-tail-rotor" x="39" y="8" width="2" height="9" rx="1" fill="rgba(255,255,255,0.92)"/>
-</svg>`;
+</svg>`
+};
 
 /* Paratrooper canopy SVG (drifts down via CSS) */
 const PARA_SVG = `<svg class="para-svg" viewBox="0 0 22 30" fill="white" xmlns="http://www.w3.org/2000/svg">
@@ -101,68 +118,125 @@ function alongRoute(coords, d, frac) {
   return { lngLat: coords[coords.length-1], bearing: 0 };
 }
 
-/* ── Helicopter RAF animation ── */
+/* ── Formation helicopter animation ── */
 function startHeli() {
   stopHeli();
-  const coords = FX.helicopter.route;
+  arrivedCount = 0;
+  const coords = FX.heliRoute;
   const d = buildRoute(coords);
-  const flyMs = FX.helicopter.flyMs || 9000;
-  const t0 = Date.now();
-  function step() {
-    const frac = Math.min((Date.now() - t0) / flyMs, 1);
-    const { lngLat, bearing } = alongRoute(coords, d, frac);
-    heliMarker.setLngLat(lngLat);
-    /* SVG body faces right (east=90°), so subtract 90° to align with compass bearing */
-    heliMarker.setRotation(bearing - 90);
-    if (frac >= 1) { clearInterval(heliTimer); heliTimer = null; parkHeli(); }
-  }
-  step();
-  heliTimer = setInterval(step, 50);
+  heliMarkers.forEach(({ marker, el, heli }, i) => {
+    el.style.opacity = '1';
+    const departAt = Date.now() + heli.lagMs;
+    heliTimers[i] = setInterval(() => {
+      const now = Date.now();
+      if (now < departAt) {
+        /* still in lag — hold at route start with lateral offset */
+        marker.setLngLat([coords[0][0] + heli.offset[0], coords[0][1] + heli.offset[1]]);
+        return;
+      }
+      const frac = Math.min((now - departAt) / FX.flyMs, 1);
+      const { lngLat, bearing } = alongRoute(coords, d, frac);
+      marker.setLngLat([lngLat[0] + heli.offset[0], lngLat[1] + heli.offset[1]]);
+      /* Nose is LEFT (west) in SVG; +90° rotates it to face the compass bearing */
+      marker.setRotation(bearing + 90);
+      if (frac >= 1) {
+        clearInterval(heliTimers[i]); heliTimers[i] = null;
+        marker.setLngLat([FX.heliAt[0] + heli.offset[0], FX.heliAt[1] + heli.offset[1]]);
+        marker.setRotation(0);
+        arrivedCount++;
+        if (arrivedCount >= FX.helicopters.length) onAllArrived();
+      }
+    }, 50);
+  });
 }
 
 function stopHeli() {
-  if (heliTimer) { clearInterval(heliTimer); heliTimer = null; }
+  heliTimers.forEach((t, i) => { if (t) { clearInterval(t); heliTimers[i] = null; } });
 }
 
 function parkHeli() {
   stopHeli();
-  if (heliMarker) { heliMarker.setLngLat(FX.helicopter.at); heliMarker.setRotation(0); }
+  heliMarkers.forEach(({ marker, heli }) => {
+    marker.setLngLat([FX.heliAt[0] + heli.offset[0], FX.heliAt[1] + heli.offset[1]]);
+    marker.setRotation(0);
+  });
+}
+
+/* Fires when the last formation member touches down */
+function onAllArrived() {
+  vdvArrived = true;
+  if (vdvEl) vdvEl.style.opacity = '1';
+  if (FX.paratroopers.scenes.includes(current)) paraEls.forEach(el => { el.style.opacity = '1'; });
+  if (FX.rapidForce.scenes.includes(current)) startRapidForce();
+}
+
+/* ── Rapid response force ── */
+function startRapidForce() {
+  stopRapidForce();
+  if (!rapidEl) return;
+  rapidEl.style.opacity = '1';
+  rapidStarted = true;
+  const coords = FX.rapidForce.route;
+  const d = buildRoute(coords);
+  const t0 = Date.now();
+  rapidTimer = setInterval(() => {
+    const frac = Math.min((Date.now() - t0) / FX.rapidForce.flyMs, 1);
+    const { lngLat } = alongRoute(coords, d, frac);
+    rapidMarker.setLngLat(lngLat);
+    if (frac >= 1) { clearInterval(rapidTimer); rapidTimer = null; }
+  }, 50);
+}
+
+function stopRapidForce() {
+  if (rapidTimer) { clearInterval(rapidTimer); rapidTimer = null; }
 }
 
 /* ── Build FX DOM markers (called once from addOverlays) ── */
 function addFx() {
-  // Helicopter
-  heliEl = document.createElement('div');
-  heliEl.className = 'heli-marker';
-  heliEl.innerHTML = HELI_SVG;
-  heliEl.style.opacity = '0';
-  heliEl.style.transition = 'opacity 0.4s ease';
-  heliMarker = new maplibregl.Marker({ element: heliEl, anchor: 'center' })
-    .setLngLat(FX.helicopter.route[0]).addTo(map);
+  arrivedCount = 0;
+  const startCoord = FX.heliRoute[0];
 
-  // Paratroopers — 3 staggered positions around the airfield
-  const offsets = [[-0.004, 0.005], [0.001, 0.006], [0.005, 0.004]];
-  for (let i = 0; i < 3; i++) {
+  /* Formation: one marker per helicopter, lateral offset applied from spawn */
+  FX.helicopters.forEach(heli => {
     const el = document.createElement('div');
-    el.className = 'para-marker';
-    el.innerHTML = PARA_SVG;
+    el.className = 'heli-marker';
+    el.innerHTML = HELI_SVGS[heli.role === 'gunship' ? 'gunship' : 'transport'];
     el.style.opacity = '0';
     el.style.transition = 'opacity 0.4s ease';
-    /* delay must go on the SVG that carries the animation, not the wrapper */
+    const marker = new maplibregl.Marker({
+      element: el, anchor: 'center',
+      rotationAlignment: 'map', pitchAlignment: 'viewport'
+    }).setLngLat([startCoord[0] + heli.offset[0], startCoord[1] + heli.offset[1]]).addTo(map);
+    heliMarkers.push({ marker, el, heli });
+    heliTimers.push(null);
+  });
+
+  /* Rapid response (moving blue force marker) */
+  rapidEl = document.createElement('div');
+  rapidEl.className = 'rapid-move-marker';
+  rapidEl.innerHTML = `<span class="rapid-flag">UA · 4th Rapid</span><span class="iconmark blue">${UNIT_ICONS.rapid}</span>`;
+  rapidEl.style.opacity = '0';
+  rapidEl.style.transition = 'opacity 0.4s ease';
+  rapidMarker = new maplibregl.Marker({ element: rapidEl, anchor: 'center' })
+    .setLngLat(FX.rapidForce.route[0]).addTo(map);
+
+  /* Paratroopers — 3 staggered positions around the airfield */
+  const paraOffsets = [[-0.004, 0.005], [0.001, 0.006], [0.005, 0.004]];
+  for (let i = 0; i < 3; i++) {
+    const el = document.createElement('div'); el.className = 'para-marker';
+    el.innerHTML = PARA_SVG; el.style.opacity = '0'; el.style.transition = 'opacity 0.4s ease';
     const svg = el.querySelector('.para-svg');
     if (svg) svg.style.animationDelay = (i * 0.7) + 's';
     paraEls.push(el);
     new maplibregl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([FX.paratroopers.at[0] + offsets[i][0], FX.paratroopers.at[1] + offsets[i][1]])
+      .setLngLat([FX.paratroopers.at[0] + paraOffsets[i][0], FX.paratroopers.at[1] + paraOffsets[i][1]])
       .addTo(map);
   }
 
-  // Artillery — two offset positions, staggered firing rhythm
+  /* Artillery — two positions, staggered firing */
   FX.artillery.positions.forEach((pos, i) => {
-    const el = document.createElement('div');
-    el.className = 'arty-marker';
-    el.style.animationDelay = (i * 0.65) + 's';
-    el.style.opacity = '0';
+    const el = document.createElement('div'); el.className = 'arty-marker';
+    el.style.animationDelay = (i * 0.65) + 's'; el.style.opacity = '0';
     el.style.transition = 'opacity 0.3s ease';
     artyEls.push(el);
     new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(pos).addTo(map);
@@ -170,20 +244,36 @@ function addFx() {
 }
 
 function updateFx() {
-  if (!heliEl) return;
+  if (!heliMarkers.length) return;
 
-  // Helicopter: fly on flyScene, park on other heli scenes, hide otherwise
-  const hVisible = FX.helicopter.scenes.includes(current);
-  heliEl.style.opacity = hVisible ? '1' : '0';
-  if (hVisible && current === FX.helicopter.flyScene) startHeli();
+  /* Formation helicopters: fly on flyScene, park on other heliScenes, hide otherwise */
+  const hVisible = FX.heliScenes.includes(current);
+  heliMarkers.forEach(({ el }) => { el.style.opacity = hVisible ? '1' : '0'; });
+  if (hVisible && current === FX.flyScene) startHeli();
   else if (hVisible) parkHeli();
   else stopHeli();
 
-  // Paratroopers
-  const pVisible = FX.paratroopers.scenes.includes(current);
-  paraEls.forEach(el => { el.style.opacity = pVisible ? '1' : '0'; });
+  /* VDV unit icon — arrival-gated on flyScene; shows immediately on later scenes */
+  if (vdvEl) {
+    const vScenes = [2,3,4,7];
+    vdvEl.style.opacity = (current === FX.flyScene)
+      ? (vdvArrived ? '1' : '0')
+      : (vScenes.includes(current) ? '1' : '0');
+  }
 
-  // Artillery
+  /* Paratroopers — same arrival gate on flyScene, then normal scene-gating */
+  const pVisible = FX.paratroopers.scenes.includes(current);
+  const pShow = (current === FX.flyScene) ? (pVisible && vdvArrived) : pVisible;
+  paraEls.forEach(el => { el.style.opacity = pShow ? '1' : '0'; });
+
+  /* Rapid force — starts moving on first entry to its scenes */
+  if (rapidEl) {
+    const rVisible = FX.rapidForce.scenes.includes(current);
+    rapidEl.style.opacity = rVisible ? '1' : '0';
+    if (rVisible && !rapidStarted) startRapidForce();
+  }
+
+  /* Artillery */
   const aVisible = FX.artillery.scenes.includes(current);
   artyEls.forEach(el => { el.style.opacity = aVisible ? '1' : '0'; });
 }
@@ -231,6 +321,9 @@ function addPointMarkers() {
   sceneMarkers.length = 0;
   for (const f of OVERLAYS.units.features) {
     const props = f.properties;
+    /* Rapid force is now a moving FX marker — skip static rendering */
+    if (props.kind === 'rapid') continue;
+
     const wrap = document.createElement('div');
     wrap.className = 'unit-marker ' + (props.side || '');
 
@@ -249,7 +342,14 @@ function addPointMarkers() {
     }
 
     new maplibregl.Marker({ element: wrap, anchor: 'center' }).setLngLat(f.geometry.coordinates).addTo(map);
-    if (props.scenes) sceneMarkers.push({ el: wrap, scenes: props.scenes });
+
+    if (props.kind === 'airborne') {
+      /* VDV: arrival-gated by updateFx — start hidden, not in sceneMarkers */
+      wrap.style.opacity = '0';
+      vdvEl = wrap;
+    } else if (props.scenes) {
+      sceneMarkers.push({ el: wrap, scenes: props.scenes });
+    }
   }
 
   if (OVERLAYS.fire) {
